@@ -1,0 +1,114 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delper Build Simulation with Timeline and Cost</title>
+<style>
+:root{--bg:#070b13;--panel:#0d1624;--panel2:#101c2e;--line:#1c2d45;--fg:#dce6f0;--muted:#6d8099;--cyan:#38bdf8;--green:#22c55e;--amber:#f59e0b;--red:#ef4444}
+html,body{background:var(--bg);color:var(--fg);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0}
+body{padding:18px;max-width:1400px;margin:0 auto}
+.banner{background:linear-gradient(90deg,#0b2236,#0d1624 50%,#0b2236);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+.banner h1{font-size:1.2rem;margin:0}.banner .tag{color:var(--cyan);font-size:.8rem;letter-spacing:.16em;text-transform:uppercase}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer}
+button.on{background:#14532d;border-color:var(--green)}
+.state{font-weight:600;color:var(--cyan)}
+select{font:inherit;padding:6px;border-radius:6px;background:var(--panel2);color:var(--fg);border:1px solid var(--line)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.k{color:var(--muted);font-size:.76rem}.v{font-size:1.05rem;font-weight:600;margin-top:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto}
+.row{display:grid;grid-template-columns:330px 110px repeat(24,minmax(26px,1fr));align-items:center;border-bottom:1px solid var(--line);min-height:34px;font-size:.84rem}
+.row.head{color:var(--muted);font-size:.72rem;border-bottom:2px solid var(--line)}
+.name{padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name small{display:block;color:var(--muted);font-size:.72rem}
+.cost{text-align:right;padding-right:10px;font-variant-numeric:tabular-nums}
+.cell{height:100%;position:relative;border-left:1px dashed #14233a}
+.bar{position:absolute;top:9px;height:14px;border-radius:4px;background:#1e3a5f;transition:background .3s}
+.bar.on{background:linear-gradient(90deg,var(--cyan),#14b8a6)}
+.bar.done{background:var(--green)}
+.dia{position:absolute;top:6px;width:20px;height:20px;transform:rotate(45deg);background:#1e3a5f;border:1px solid var(--amber)}
+.dia.on{background:var(--amber)}
+.legend{display:flex;gap:16px;font-size:.8rem;color:var(--muted);margin:8px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.mission{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.mission div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-weight:600;letter-spacing:.06em;font-size:.9rem}
+.note{color:var(--muted);font-size:.8rem;margin-top:10px}
+</style></head><body>
+<div class="banner"><h1>Delper Build Simulation with Timeline and Cost</h1><div class="tag">Control design first. Gated release by market.</div></div>
+<div class="controls">
+<button id="start">Start</button><button id="pause">Pause</button><button id="reset">Reset</button>
+<span class="state" id="state">Paused at Month 0</span>
+<label>Speed <select id="speed"><option value="1200">Slow</option><option value="600" selected>Normal</option><option value="250">Fast</option></select></label>
+</div>
+<div class="cards">
+<div class="card"><div class="k">Month</div><div class="v" id="month">0 of 24</div></div>
+<div class="card"><div class="k">Tasks done</div><div class="v" id="done">0 of 18</div></div>
+<div class="card"><div class="k">Build spend to date (internal)</div><div class="v" id="spend">$0</div></div>
+<div class="card"><div class="k">Seed remaining</div><div class="v" id="seedleft">$8.00 M</div></div>
+<div class="card"><div class="k">Live agents</div><div class="v" id="live">0 of 10</div></div>
+</div>
+<div class="legend"><span><i style="background:var(--cyan)"></i>In progress</span><span><i style="background:var(--green)"></i>Done</span><span><i style="background:var(--amber)"></i>Gate or milestone</span></div>
+<div class="panel" id="gantt"></div>
+<div class="mission"><div>OUR MISSION: SAFE AI.</div><div>RESPONSIBLE AI.</div><div>TRUSTED AI.</div></div>
+<p class="note">Costs are internal estimates: team size × months × $5,000 per FTE-month. Spend is recognised evenly across each task's window. Vendor fees, licences, the pen test, and the EY and PwC reviews are not included. Waves 2 to 4 are not costed here.</p>
+<script>
+const D={"tasks": [["Architecture and control design", "CTO", 1, 2, "task", 40000], ["Policy and parameter rules per agent", "CCO", 2, 3, "task", 30000], ["Core systems: SAP S/4HANA, golden records", "CTO", 2, 6, "task", 150000], ["Enforcement layer (control plane selected and tested)", "CTO", 3, 5, "task", 60000], ["Data residency and consent records per market", "CCO", 3, 6, "task", 60000], ["Observability and audit logs", "CTO", 5, 7, "task", 45000], ["Security baseline, pen test, bug bounty", "CTO", 4, 8, "task", 100000], ["Agent build: 10 agents (Chizl, on Delper infrastructure)", "CTO", 4, 8, "task", 166667], ["Channel connectors (storefronts, ONDC, procurement, POS)", "CBO", 5, 9, "task", 125000], ["Kill switch and override test", "GK Bharta", 6, 7, "task", 20000], ["Finance lock and 2-day payment test", "GK Bharta finance", 6, 7, "task", 20000], ["Independent control review (EY, PwC)", "EY and PwC", 7, 8, "task", 10000], ["Market gate: UAE and Singapore sign-off", "CCO", 8, 8, "milestone", 0], ["Soft launch: UAE and Singapore", "CBO", 9, 12, "task", 160000], ["Market gate: India and UK sign-off", "CCO", 10, 11, "milestone", 0], ["Wave 2: UK, Germany, India, Malaysia", "CBO", 13, 16, "task", 0], ["Wave 3: France, Italy, Brazil, South Korea, Saudi Arabia", "CBO", 17, 20, "task", 0], ["Wave 4: Nigeria, Indonesia, 30+ markets", "CBO", 21, 24, "task", 0]], "months": 24, "seed": 8000000};
+const N=D.tasks.length;
+const fmt=v=>'$'+Math.round(v).toLocaleString('en-US');
+const g=document.getElementById('gantt');
+let head='<div class="row head"><div class="name">Task and owner</div><div class="cost">Cost</div>'+Array.from({length:D.months},(_,i)=>`<div style="text-align:center">M${i+1}</div>`).join('')+'</div>';
+let rows=D.tasks.map((t,idx)=>{
+  const [name,owner,s,e,kind,cost]=t;
+  let cells='';
+  for(let c=1;c<=D.months;c++){
+    let inner='';
+    if(c===s && kind==='task') inner+=`<div class="bar" style="left:0;width:${(e-s+1)*100}%"></div>`;
+    if(kind==='milestone' && c===s) inner+=`<div class="dia" style="left:4px"></div>`;
+    cells+=`<div class="cell">${inner}</div>`;
+  }
+  const costLabel = cost>0 ? fmt(cost) : (kind==='milestone'?'In compliance estimate':'TBC');
+  return `<div class="row" data-r="${idx}"><div class="name">${name}<small>${owner} · M${s}${e!==s?'–M'+e:''}</small></div><div class="cost">${costLabel}</div>${cells}</div>`;
+}).join('');
+g.innerHTML=head+rows;
+let m=0,timer=null,running=false;
+function spendAt(mo){
+  let s=0;
+  D.tasks.forEach(t=>{
+    const [,,st,en,kind,cost]=t;
+    if(kind!=='task'||cost<=0) return;
+    const span=en-st+1; const elapsed=Math.max(0,Math.min(span,mo-st+1));
+    s+=cost*elapsed/span;
+  });
+  return s;
+}
+function draw(){
+  let done=0,gates=0;
+  D.tasks.forEach((t,idx)=>{
+    const [,,st,en,kind]=t;
+    const row=g.querySelector(`[data-r="${idx}"]`);
+    if(kind==='task'){
+      const bar=row.querySelector('.bar');
+      if(m>en){ done++; bar.className='bar done'; }
+      else if(m>=st){ bar.className='bar on'; const span=en-st+1; bar.style.width=(Math.min(span,m-st+1)*100/span*span)+'%'; }
+      else { bar.className='bar'; bar.style.width=((en-st+1)*100)+'%'; }
+    } else {
+      const dia=row.querySelector('.dia');
+      if(m>=st){ dia.classList.add('on'); gates++; done++; } else dia.classList.remove('on');
+    }
+  });
+  const sp=spendAt(m);
+  document.getElementById('month').textContent=m+' of '+D.months;
+  document.getElementById('done').textContent=done+' of '+N;
+  document.getElementById('spend').textContent=fmt(sp);
+  document.getElementById('seedleft').textContent=fmt(D.seed-sp);
+  document.getElementById('live').textContent=(m>=8?10:0)+' of 10';
+}
+function setState(t){document.getElementById('state').textContent=t;}
+function tick(){ if(m>=D.months){ pause(); setState('Complete at Month 24'); return; } m++; draw(); setState(running?'Running':'Paused at Month '+m); }
+function start(){ if(running) return; if(m>=D.months) reset(); running=true; document.getElementById('start').classList.add('on'); document.getElementById('pause').classList.remove('on'); setState('Running'); timer=setInterval(tick,+document.getElementById('speed').value); }
+function pause(){ running=false; clearInterval(timer); document.getElementById('start').classList.remove('on'); document.getElementById('pause').classList.add('on'); setState('Paused at Month '+m); }
+function reset(){ pause(); m=0; document.getElementById('pause').classList.remove('on'); draw(); setState('Paused at Month 0'); }
+document.getElementById('start').onclick=start;
+document.getElementById('pause').onclick=pause;
+document.getElementById('reset').onclick=reset;
+document.getElementById('speed').onchange=()=>{ if(running){ clearInterval(timer); timer=setInterval(tick,+document.getElementById('speed').value);} };
+draw();
+</script></body></html>
